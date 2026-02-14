@@ -1,4 +1,5 @@
 {
-  "extends": ["next/core-web-vitals"],
-  "_endOfFile": "// END OF FILE"
+  "extends": [
+    "next/core-web-vitals"
+  ]
 }
