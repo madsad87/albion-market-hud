@@ -6,7 +6,11 @@ export type CityName =
   | 'Martlock'
   | 'Thetford';
 
-export type AlbionPriceRow = {
+export type RouteType = 'flip' | 'transport';
+
+export type ModeFilter = 'best' | 'top3' | 'flips' | 'transport';
+
+export type PriceRow = {
   item_id: string;
   city: string;
   quality: number;
@@ -16,23 +20,37 @@ export type AlbionPriceRow = {
   buy_price_max_date: string;
 };
 
-export type PriceSnapshot = {
+export type NormalizedPrice = {
   itemId: string;
   city: CityName;
-  buyPrice: number;
-  sellPrice: number;
-  observedAt: string;
+  quality: number;
+  buyPriceMax: number;
+  sellPriceMin: number;
+  buyPriceMaxDate: string;
+  sellPriceMinDate: string;
 };
 
-export type ArbitrageOpportunity = {
+export type Opportunity = {
   itemId: string;
   fromCity: CityName;
   toCity: CityName;
   buyPrice: number;
   sellPrice: number;
-  grossSpread: number;
   netProfit: number;
-  profitPercent: number;
-  observedAt: string;
+  profitPct: number;
+  feesApplied: {
+    buyFee: number;
+    sellFee: number;
+    tax: number;
+  };
+  dataAgeMinutes: number;
+  routeType: RouteType;
 };
-// END OF FILE
+
+export type OpportunitiesMeta = {
+  updatedAt: string;
+  lastUpdated: string;
+  itemCount: number;
+  quality: number;
+  cityCount: number;
+};
