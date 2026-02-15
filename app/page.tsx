@@ -24,7 +24,6 @@ type QuickInsight = {
 
 const DEFAULT_ITEMS = 'T4_BAG,T4_CAPE,T4_MAIN_SWORD';
 
-
 const formatSilver = (value: number): string =>
   value.toLocaleString(undefined, { maximumFractionDigits: 0 });
 
@@ -71,6 +70,7 @@ export default function DashboardPage(): JSX.Element {
   const [mode, setMode] = useState<ModeFilter>('best');
   const [minProfitPct, setMinProfitPct] = useState('0');
   const [maxDataAge, setMaxDataAge] = useState('120');
+  const [autoScan, setAutoScan] = useState(false);
   const [sortField, setSortField] = useState<SortField>('profitPct');
 
   const [data, setData] = useState<ApiPayload | null>(null);
@@ -101,8 +101,9 @@ export default function DashboardPage(): JSX.Element {
       return;
     }
 
-    if (!validated.items.length) {
-      setError('Enter at least one item ID.');
+    const manualOverrideItems = validated.items;
+    if (!autoScan && !manualOverrideItems.length) {
+      setError('Enter at least one item ID or enable auto-scan market.');
       return;
     }
 
@@ -110,14 +111,18 @@ export default function DashboardPage(): JSX.Element {
     setError(null);
 
     const query = new URLSearchParams({
-      items: validated.items.join(','),
       cities: SUPPORTED_CITIES.join(','),
       quality: '1',
       mode,
       minProfitPct,
       maxDataAge,
+      scanMode: autoScan ? 'auto' : 'manual',
       ts: String(Date.now())
     });
+
+    if (manualOverrideItems.length > 0) {
+      query.set('items', manualOverrideItems.join(','));
+    }
 
     try {
       const response = await fetch(`/api/opportunities?${query.toString()}`);
@@ -150,6 +155,9 @@ export default function DashboardPage(): JSX.Element {
         {data && (
           <div className={styles.insightsPanel}>
             <h2>Immediate Opportunities</h2>
+            {data.meta.scanMode === 'auto' && (
+              <p className={styles.insightsSubtle}>Auto-scan results · {data.meta.scannedItemCount} items scanned</p>
+            )}
             <p className={styles.insightsSubtle}>
               Shows fresh ({'<='}30m) profitable routes. Item metadata source: {data.meta.itemCatalog.source}.
             </p>
@@ -189,6 +197,7 @@ export default function DashboardPage(): JSX.Element {
           mode={mode}
           minProfitPct={minProfitPct}
           maxDataAge={maxDataAge}
+          autoScan={autoScan}
           onItemInput={setItemInput}
           onStartCity={setStartCity}
           onTargetCities={setTargetCities}
@@ -196,6 +205,7 @@ export default function DashboardPage(): JSX.Element {
           onMode={setMode}
           onMinProfitPct={setMinProfitPct}
           onMaxDataAge={setMaxDataAge}
+          onAutoScan={setAutoScan}
           onApply={loadData}
           loading={loading}
         />

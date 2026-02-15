@@ -8,6 +8,7 @@ Next.js dashboard for fee-aware Albion Online arbitrage opportunities powered by
 - Route modes: best transport route, top 3 routes, flips-only, transport-only
 - Data freshness filter (`Max data age`) and last-updated metadata
 - Quick item presets + comma-separated custom item IDs with dedupe and max-item validation
+- Auto-scan market toggle for zero-input discovery (manual IDs remain available as override)
 - Immediate Opportunities panel highlighting fresh profitable flip + transport routes
 - Item metadata enrichment hook (designed to be fed by ao-data item dumps)
 - Vercel-friendly cache headers with stale-while-revalidate behavior
@@ -49,12 +50,13 @@ Rows with `buyPrice <= 0` or `sellPrice <= 0` are ignored.
 
 Query params:
 
-- `items` (required): comma-separated item IDs, deduped, max 50
+- `items` (optional in auto mode): comma-separated item IDs, deduped, max 50
 - `cities` (optional): comma-separated supported cities
 - `quality` (optional, default `1`)
 - `mode` (optional): `best | top3 | flips | transport`
 - `minProfitPct` (optional)
 - `maxDataAge` (optional, minutes)
+- `scanMode` (optional): `manual | auto` (auto allows zero-input scans using server-known item IDs)
 
 Returns:
 
@@ -65,6 +67,8 @@ Returns:
     "updatedAt": "...",
     "lastUpdated": "...",
     "itemCount": 3,
+    "scannedItemCount": 3,
+    "scanMode": "auto",
     "quality": 1,
     "cityCount": 6,
     "itemCatalog": {
@@ -85,3 +89,9 @@ Cache-Control: max-age=0, s-maxage=<PRICE_CACHE_TTL>, stale-while-revalidate=<2x
 ```
 
 The dashboard refresh button adds `ts=Date.now()` to the browser request URL to force a client refetch while preserving the edge cache policy.
+
+## UI flow updates
+
+- Enable **Auto-scan market** to run opportunities without entering item IDs.
+- Keep the item input populated only when you want an advanced manual override while auto-scan is enabled.
+- Immediate Opportunities now surfaces an **Auto-scan results** label with the scanned item count from API metadata.

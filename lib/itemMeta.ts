@@ -68,3 +68,5 @@ export const getItemMeta = (itemId: string): ItemMeta => {
 export const hasLoadedItemMeta = (): boolean => itemMetaById.size > 0;
 
 export const getKnownItemCount = (): number => itemMetaById.size;
+
+export const getKnownItemIds = (): string[] => Array.from(itemMetaById.keys());
