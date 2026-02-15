@@ -1,17 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 
-import { fetchCurrentPrices } from '@/lib/albionApi';
+import { fetchCurrentPrices, fetchCurrentPricesBatched } from '@/lib/albionApi';
 import {
+  AUTO_SCAN_BATCH_SIZE,
+  AUTO_SCAN_TIMEOUT_BUDGET_MS,
   DEFAULT_MAX_DATA_AGE_MINUTES,
   DEFAULT_MODE,
   DEFAULT_QUALITY,
   MAX_ITEMS_PER_REQUEST,
+  MAX_AUTO_SCAN_ITEMS,
   PRICE_CACHE_TTL_SECONDS,
   SUPPORTED_CITIES
 } from '@/lib/config';
 import { generateOpportunities } from '@/lib/arbitrage';
 import { getKnownItemCount, hasLoadedItemMeta } from '@/lib/itemMeta';
+import { getCuratedScanUniverse } from '@/lib/itemUniverse';
 import type { CityName, ModeFilter, OpportunitiesMeta } from '@/types/market';
 
 const modeValues: ModeFilter[] = ['best', 'top3', 'flips', 'transport'];
@@ -53,7 +57,8 @@ const querySchema = z.object({
   mode: z
     .string()
     .optional()
-    .transform((value) => (modeValues.includes(value as ModeFilter) ? (value as ModeFilter) : DEFAULT_MODE))
+    .transform((value) => (modeValues.includes(value as ModeFilter) ? (value as ModeFilter) : DEFAULT_MODE)),
+  scanMode: z.enum(['manual', 'auto']).default('manual')
 });
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -64,17 +69,36 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid request', details: itemError }, { status: 400 });
   }
 
-  if (!items.length) {
-    return NextResponse.json({ error: 'Invalid request', details: 'At least one item ID is required' }, { status: 400 });
-  }
-
   try {
     const parsed = querySchema.parse(Object.fromEntries(queryParams.entries()));
-    const normalized = await fetchCurrentPrices({
-      items,
-      cities: parsed.cities,
-      quality: parsed.quality
-    });
+    const shouldAutoScan = parsed.scanMode === 'auto' && !items.length;
+    const autoScan = shouldAutoScan ? getCuratedScanUniverse() : null;
+    const effectiveItems = shouldAutoScan ? autoScan?.itemIds ?? [] : items;
+
+    if (!effectiveItems.length) {
+      return NextResponse.json({ error: 'Invalid request', details: 'At least one item ID is required' }, { status: 400 });
+    }
+
+    if (shouldAutoScan && effectiveItems.length > MAX_AUTO_SCAN_ITEMS) {
+      return NextResponse.json(
+        { error: 'Invalid request', details: `Auto scan limited to ${MAX_AUTO_SCAN_ITEMS} item IDs` },
+        { status: 400 }
+      );
+    }
+
+    const normalized = shouldAutoScan
+      ? await fetchCurrentPricesBatched({
+          items: effectiveItems,
+          cities: parsed.cities,
+          quality: parsed.quality,
+          batchSize: AUTO_SCAN_BATCH_SIZE,
+          timeoutBudgetMs: AUTO_SCAN_TIMEOUT_BUDGET_MS
+        })
+      : await fetchCurrentPrices({
+          items: effectiveItems,
+          cities: parsed.cities,
+          quality: parsed.quality
+        });
 
     const opportunities = generateOpportunities(normalized, parsed.mode)
       .filter((opportunity) => opportunity.profitPct >= parsed.minProfitPct)
@@ -88,15 +112,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         .flatMap((row) => [row.buyPriceMaxDate, row.sellPriceMinDate])
         .sort()
         .at(-1) ?? new Date().toISOString(),
-      itemCount: items.length,
+      itemCount: effectiveItems.length,
       quality: parsed.quality,
       cityCount: parsed.cities.length,
+      scanMode: shouldAutoScan ? 'auto' : 'manual',
+      scannedItemCount: effectiveItems.length,
+      scanSource: shouldAutoScan ? autoScan?.scanSource ?? 'curated-liquidity-universe' : 'query-items',
       itemCatalog: {
         source: hasLoadedItemMeta()
           ? 'Local snapshot inspired by ao-data item metadata (extensible to full dump)'
           : 'No item metadata loaded',
         knownItems,
-        coveragePct: Number(((knownItems / items.length) * 100).toFixed(2))
+        coveragePct: Number(((knownItems / effectiveItems.length) * 100).toFixed(2))
       }
     };
 
@@ -109,6 +136,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       }
     );
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: 'Invalid request', details: error.issues }, { status: 400 });
+    }
+
     const details = error instanceof Error ? error.message : 'Unknown upstream error';
     const malformed = details.includes('Malformed response payload');
 
