@@ -32,7 +32,10 @@ export function OpportunitiesTable({ rows, sortField, onSort }: Props): JSX.Elem
         <tbody>
           {rows.map((row) => (
             <tr key={`${row.itemId}-${row.fromCity}-${row.toCity}-${row.routeType}`}>
-              <td>{row.itemId}</td>
+              <td>
+                <strong>{row.itemName}</strong>
+                <div style={{ opacity: 0.7, fontSize: 12 }}>{row.itemId}</div>
+              </td>
               <td>{row.fromCity}</td>
               <td>{row.toCity}</td>
               <td>{formatNumber(row.buyPrice)}</td>

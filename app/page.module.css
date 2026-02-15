@@ -77,3 +77,39 @@
 .card :global(.table tbody tr:hover) {
   background: rgba(30, 41, 59, 0.55);
 }
+
+.insightsPanel {
+  margin: 0.75rem 0 1rem;
+  padding: 0.9rem;
+  border-radius: 10px;
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  background: rgba(2, 132, 199, 0.12);
+}
+
+.insightsSubtle {
+  margin: 0.3rem 0;
+  opacity: 0.85;
+  font-size: 0.92rem;
+}
+
+.insightGrid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 0.7rem;
+  margin-top: 0.6rem;
+}
+
+.insightCard {
+  border: 1px solid rgba(148, 163, 184, 0.35);
+  border-radius: 10px;
+  padding: 0.7rem;
+  background: rgba(15, 23, 42, 0.7);
+}
+
+.insightCard h3 {
+  margin: 0 0 0.3rem;
+}
+
+.insightCard p {
+  margin: 0.25rem 0;
+}

@@ -1,4 +1,5 @@
 import { BUY_ORDER_FEE, SELL_ORDER_FEE, TRANSACTION_TAX } from '@/lib/config';
+import { getItemMeta } from '@/lib/itemMeta';
 import type { ModeFilter, NormalizedPrice, Opportunity } from '@/types/market';
 
 type FeeConfig = {
@@ -44,8 +45,11 @@ const buildOpportunity = (source: NormalizedPrice, target: NormalizedPrice): Opp
 
   if (buyPrice <= 0 || sellPrice <= 0 || netProfit <= 0) return null;
 
+  const itemMeta = getItemMeta(source.itemId);
+
   return {
     itemId: source.itemId,
+    itemName: itemMeta.itemName,
     fromCity: source.city,
     toCity: target.city,
     buyPrice,

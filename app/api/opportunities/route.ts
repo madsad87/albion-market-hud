@@ -11,6 +11,7 @@ import {
   SUPPORTED_CITIES
 } from '@/lib/config';
 import { generateOpportunities } from '@/lib/arbitrage';
+import { getKnownItemCount, hasLoadedItemMeta } from '@/lib/itemMeta';
 import type { CityName, ModeFilter, OpportunitiesMeta } from '@/types/market';
 
 const modeValues: ModeFilter[] = ['best', 'top3', 'flips', 'transport'];
@@ -79,6 +80,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       .filter((opportunity) => opportunity.profitPct >= parsed.minProfitPct)
       .filter((opportunity) => opportunity.dataAgeMinutes <= parsed.maxDataAge);
 
+    const knownItems = getKnownItemCount();
+
     const meta: OpportunitiesMeta = {
       updatedAt: new Date().toISOString(),
       lastUpdated: normalized
@@ -87,7 +90,14 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         .at(-1) ?? new Date().toISOString(),
       itemCount: items.length,
       quality: parsed.quality,
-      cityCount: parsed.cities.length
+      cityCount: parsed.cities.length,
+      itemCatalog: {
+        source: hasLoadedItemMeta()
+          ? 'Local snapshot inspired by ao-data item metadata (extensible to full dump)'
+          : 'No item metadata loaded',
+        knownItems,
+        coveragePct: Number(((knownItems / items.length) * 100).toFixed(2))
+      }
     };
 
     return NextResponse.json(

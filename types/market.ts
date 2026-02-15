@@ -32,6 +32,7 @@ export type NormalizedPrice = {
 
 export type Opportunity = {
   itemId: string;
+  itemName: string;
   fromCity: CityName;
   toCity: CityName;
   buyPrice: number;
@@ -53,4 +54,9 @@ export type OpportunitiesMeta = {
   itemCount: number;
   quality: number;
   cityCount: number;
+  itemCatalog: {
+    source: string;
+    knownItems: number;
+    coveragePct: number;
+  };
 };

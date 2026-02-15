@@ -8,6 +8,8 @@ Next.js dashboard for fee-aware Albion Online arbitrage opportunities powered by
 - Route modes: best transport route, top 3 routes, flips-only, transport-only
 - Data freshness filter (`Max data age`) and last-updated metadata
 - Quick item presets + comma-separated custom item IDs with dedupe and max-item validation
+- Immediate Opportunities panel highlighting fresh profitable flip + transport routes
+- Item metadata enrichment hook (designed to be fed by ao-data item dumps)
 - Vercel-friendly cache headers with stale-while-revalidate behavior
 - Timeout + retry hardening for external API calls
 
@@ -64,7 +66,12 @@ Returns:
     "lastUpdated": "...",
     "itemCount": 3,
     "quality": 1,
-    "cityCount": 6
+    "cityCount": 6,
+    "itemCatalog": {
+      "source": "Local snapshot inspired by ao-data item metadata (extensible to full dump)",
+      "knownItems": 10,
+      "coveragePct": 20
+    }
   }
 }
 ```
