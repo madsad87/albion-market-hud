@@ -1,12 +1,15 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { z } from 'zod';
 
-import { fetchCurrentPrices } from '@/lib/albionApi';
+import { fetchCurrentPrices, fetchCurrentPricesBatched } from '@/lib/albionApi';
 import {
+  AUTO_SCAN_BATCH_SIZE,
+  AUTO_SCAN_TIMEOUT_BUDGET_MS,
   DEFAULT_MAX_DATA_AGE_MINUTES,
   DEFAULT_MODE,
   DEFAULT_QUALITY,
   MAX_ITEMS_PER_REQUEST,
+  MAX_AUTO_SCAN_ITEMS,
   PRICE_CACHE_TTL_SECONDS,
   SUPPORTED_CITIES
 } from '@/lib/config';
@@ -109,6 +112,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       scanSource,
       quality: parsed.quality,
       cityCount: parsed.cities.length,
+      scanMode: shouldAutoScan ? 'auto' : 'manual',
+      scannedItemCount: effectiveItems.length,
+      scanSource: shouldAutoScan ? autoScan?.scanSource ?? 'curated-liquidity-universe' : 'query-items',
       itemCatalog: {
         source: hasLoadedItemMeta()
           ? 'Local snapshot inspired by ao-data item metadata (extensible to full dump)'
@@ -127,6 +133,10 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       }
     );
   } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: 'Invalid request', details: error.issues }, { status: 400 });
+    }
+
     const details = error instanceof Error ? error.message : 'Unknown upstream error';
     const malformed = details.includes('Malformed response payload');
 
