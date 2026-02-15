@@ -11,8 +11,11 @@ import {
   SUPPORTED_CITIES
 } from '@/lib/config';
 import { generateOpportunities } from '@/lib/arbitrage';
-import { getKnownItemCount, hasLoadedItemMeta } from '@/lib/itemMeta';
+import { getKnownItemCount, getKnownItemIds, hasLoadedItemMeta } from '@/lib/itemMeta';
 import type { CityName, ModeFilter, OpportunitiesMeta } from '@/types/market';
+
+const scanModes = ['manual', 'auto'] as const;
+type ScanMode = (typeof scanModes)[number];
 
 const modeValues: ModeFilter[] = ['best', 'top3', 'flips', 'transport'];
 
@@ -53,7 +56,11 @@ const querySchema = z.object({
   mode: z
     .string()
     .optional()
-    .transform((value) => (modeValues.includes(value as ModeFilter) ? (value as ModeFilter) : DEFAULT_MODE))
+    .transform((value) => (modeValues.includes(value as ModeFilter) ? (value as ModeFilter) : DEFAULT_MODE)),
+  scanMode: z
+    .string()
+    .optional()
+    .transform((value): ScanMode => (scanModes.includes(value as ScanMode) ? (value as ScanMode) : 'manual'))
 });
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -64,14 +71,18 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
     return NextResponse.json({ error: 'Invalid request', details: itemError }, { status: 400 });
   }
 
-  if (!items.length) {
-    return NextResponse.json({ error: 'Invalid request', details: 'At least one item ID is required' }, { status: 400 });
-  }
-
   try {
     const parsed = querySchema.parse(Object.fromEntries(queryParams.entries()));
+    const knownItems = getKnownItemIds();
+    const fallbackAutoItems = knownItems.slice(0, MAX_ITEMS_PER_REQUEST);
+    const resolvedItems = items.length ? items : parsed.scanMode === 'auto' ? fallbackAutoItems : [];
+
+    if (!resolvedItems.length) {
+      return NextResponse.json({ error: 'Invalid request', details: 'At least one item ID is required' }, { status: 400 });
+    }
+
     const normalized = await fetchCurrentPrices({
-      items,
+      items: resolvedItems,
       cities: parsed.cities,
       quality: parsed.quality
     });
@@ -80,23 +91,23 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
       .filter((opportunity) => opportunity.profitPct >= parsed.minProfitPct)
       .filter((opportunity) => opportunity.dataAgeMinutes <= parsed.maxDataAge);
 
-    const knownItems = getKnownItemCount();
-
     const meta: OpportunitiesMeta = {
       updatedAt: new Date().toISOString(),
       lastUpdated: normalized
         .flatMap((row) => [row.buyPriceMaxDate, row.sellPriceMinDate])
         .sort()
         .at(-1) ?? new Date().toISOString(),
-      itemCount: items.length,
+      itemCount: resolvedItems.length,
+      scannedItemCount: resolvedItems.length,
+      scanMode: parsed.scanMode,
       quality: parsed.quality,
       cityCount: parsed.cities.length,
       itemCatalog: {
         source: hasLoadedItemMeta()
           ? 'Local snapshot inspired by ao-data item metadata (extensible to full dump)'
           : 'No item metadata loaded',
-        knownItems,
-        coveragePct: Number(((knownItems / items.length) * 100).toFixed(2))
+        knownItems: getKnownItemCount(),
+        coveragePct: Number(((getKnownItemCount() / resolvedItems.length) * 100).toFixed(2))
       }
     };
 

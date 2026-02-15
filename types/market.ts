@@ -52,6 +52,8 @@ export type OpportunitiesMeta = {
   updatedAt: string;
   lastUpdated: string;
   itemCount: number;
+  scannedItemCount: number;
+  scanMode: 'manual' | 'auto';
   quality: number;
   cityCount: number;
   itemCatalog: {
