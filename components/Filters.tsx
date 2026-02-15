@@ -11,6 +11,7 @@ type FiltersProps = {
   mode: ModeFilter;
   minProfitPct: string;
   maxDataAge: string;
+  autoScan: boolean;
   onItemInput: (value: string) => void;
   onStartCity: (value: string) => void;
   onTargetCities: (value: string[]) => void;
@@ -18,6 +19,7 @@ type FiltersProps = {
   onMode: (value: ModeFilter) => void;
   onMinProfitPct: (value: string) => void;
   onMaxDataAge: (value: string) => void;
+  onAutoScan: (value: boolean) => void;
   onApply: () => void;
   loading: boolean;
 };
@@ -33,11 +35,17 @@ export function Filters(props: FiltersProps): JSX.Element {
         ))}
       </div>
 
+      <div style={{ marginBottom: 12 }}>
+        <button type="button" onClick={() => props.onAutoScan(!props.autoScan)}>
+          {props.autoScan ? 'Auto-scan market: On' : 'Auto-scan market: Off'}
+        </button>
+      </div>
+
       <div className="filtersGrid">
         <input
           value={props.itemInput}
           onChange={(event) => props.onItemInput(event.target.value)}
-          placeholder="Comma-separated item IDs"
+          placeholder={props.autoScan ? 'Optional override: comma-separated item IDs' : 'Comma-separated item IDs'}
         />
 
         <select value={props.startCity} onChange={(event) => props.onStartCity(event.target.value)}>
