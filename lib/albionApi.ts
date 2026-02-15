@@ -1,4 +1,4 @@
-import { REQUEST_TIMEOUT_MS } from '@/lib/config';
+import { AUTO_SCAN_BATCH_SIZE, AUTO_SCAN_TIMEOUT_BUDGET_MS, REQUEST_TIMEOUT_MS } from '@/lib/config';
 import type { CityName, NormalizedPrice, PriceRow } from '@/types/market';
 
 const ALBION_DATA_BASE_URL =
@@ -72,4 +72,42 @@ export async function fetchCurrentPrices(params: {
   }
 
   throw lastError instanceof Error ? lastError : new Error('Albion API request failed');
+}
+
+
+const chunk = <T>(items: T[], size: number): T[][] => {
+  const chunks: T[][] = [];
+  for (let i = 0; i < items.length; i += size) {
+    chunks.push(items.slice(i, i + size));
+  }
+  return chunks;
+};
+
+export async function fetchCurrentPricesBatched(params: {
+  items: string[];
+  cities: CityName[];
+  quality: number;
+  batchSize?: number;
+  timeoutBudgetMs?: number;
+}): Promise<NormalizedPrice[]> {
+  const batches = chunk(params.items, params.batchSize ?? AUTO_SCAN_BATCH_SIZE);
+  const timeoutBudgetMs = params.timeoutBudgetMs ?? AUTO_SCAN_TIMEOUT_BUDGET_MS;
+  const startedAt = Date.now();
+  const results: NormalizedPrice[] = [];
+
+  for (const batchItems of batches) {
+    if (Date.now() - startedAt > timeoutBudgetMs) {
+      throw new Error(`Auto scan timeout budget exceeded (${timeoutBudgetMs}ms)`);
+    }
+
+    const rows = await fetchCurrentPrices({
+      items: batchItems,
+      cities: params.cities,
+      quality: params.quality
+    });
+
+    results.push(...rows);
+  }
+
+  return results;
 }

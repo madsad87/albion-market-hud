@@ -61,4 +61,7 @@ export type OpportunitiesMeta = {
     knownItems: number;
     coveragePct: number;
   };
+  scanMode: 'manual' | 'auto';
+  scannedItemCount: number;
+  scanSource: string;
 };
