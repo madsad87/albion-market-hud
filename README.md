@@ -1,14 +1,15 @@
 # Albion Market HUD
 
-A Next.js dashboard and backend API for finding Albion Online city-to-city market arbitrage opportunities using the Albion Online Data Project.
+Next.js dashboard for fee-aware Albion Online arbitrage opportunities powered by the Albion Online Data Project (`west` host).
 
 ## Features
 
-- Server API route to fetch market prices from `west.albion-online-data.com`
-- Input validation, timeout handling, and lightweight in-memory caching
-- Normalized snapshots and arbitrage calculation after fees
-- Simple web dashboard with filters for cities and minimum profit %
-- Ready for deployment on Vercel
+- Server-side opportunity engine (`/api/opportunities`) with fee-aware profit math
+- Route modes: best transport route, top 3 routes, flips-only, transport-only
+- Data freshness filter (`Max data age`) and last-updated metadata
+- Quick item presets + comma-separated custom item IDs with dedupe and max-item validation
+- Vercel-friendly cache headers with stale-while-revalidate behavior
+- Timeout + retry hardening for external API calls
 
 ## Quick start
 
@@ -17,30 +18,63 @@ npm install
 npm run dev
 ```
 
-Open `http://localhost:3000`.
-
 ## Environment variables
-
-Copy `.env.example` to `.env.local` and update as needed.
 
 | Name | Default | Description |
 | --- | --- | --- |
-| `ALBION_DATA_BASE_URL` | `https://west.albion-online-data.com/api/v2/stats/prices` | Albion Data Project API base URL |
+| `ALBION_DATA_BASE_URL` | `https://west.albion-online-data.com/api/v2/stats/prices` | Albion Data Project endpoint |
+| `BUY_ORDER_FEE` | `0.025` | Buy-side order fee rate |
+| `SELL_ORDER_FEE` | `0.025` | Sell-side order fee rate |
+| `TRANSACTION_TAX` | `0.04` | Sell-side transaction tax |
+| `PRICE_CACHE_TTL` | `300` | Edge cache TTL in seconds (`s-maxage`) |
 
-## API usage
+## Profit formula
 
-### GET `/api/arbitrage`
+Premium default formula:
 
-Query parameters:
+```text
+netProfit = (sellPrice * (1 - SELL_ORDER_FEE - TRANSACTION_TAX))
+            - (buyPrice * (1 + BUY_ORDER_FEE))
 
-- `items`: comma-separated item IDs (e.g. `T4_BAG,T4_CAPE`)
-- `cities`: comma-separated cities (defaults to all supported cities)
-- `minProfitPct`: minimum net profit percent filter
-
-Example:
-
-```bash
-curl "http://localhost:3000/api/arbitrage?items=T4_BAG,T5_2H_FIRESTAFF&cities=Lymhurst,Caerleon&minProfitPct=8"
+profitPct = netProfit / (buyPrice * (1 + BUY_ORDER_FEE)) * 100
 ```
 
-<!-- END OF FILE -->
+Rows with `buyPrice <= 0` or `sellPrice <= 0` are ignored.
+
+## API
+
+### GET `/api/opportunities`
+
+Query params:
+
+- `items` (required): comma-separated item IDs, deduped, max 50
+- `cities` (optional): comma-separated supported cities
+- `quality` (optional, default `1`)
+- `mode` (optional): `best | top3 | flips | transport`
+- `minProfitPct` (optional)
+- `maxDataAge` (optional, minutes)
+
+Returns:
+
+```json
+{
+  "opportunities": [],
+  "meta": {
+    "updatedAt": "...",
+    "lastUpdated": "...",
+    "itemCount": 3,
+    "quality": 1,
+    "cityCount": 6
+  }
+}
+```
+
+## Caching behavior
+
+API responses set:
+
+```text
+Cache-Control: max-age=0, s-maxage=<PRICE_CACHE_TTL>, stale-while-revalidate=<2x TTL>
+```
+
+The dashboard refresh button adds `ts=Date.now()` to the browser request URL to force a client refetch while preserving the edge cache policy.

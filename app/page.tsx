@@ -1,153 +1,139 @@
 'use client';
 
 import { useMemo, useState } from 'react';
+
+import { Filters } from '@/components/Filters';
+import { OpportunitiesTable, type SortField } from '@/components/OpportunitiesTable';
+import { MAX_ITEMS_PER_REQUEST, SUPPORTED_CITIES } from '@/lib/config';
+import type { ModeFilter, Opportunity, OpportunitiesMeta } from '@/types/market';
+
 import styles from './page.module.css';
 
-type Opportunity = {
-  itemId: string;
-  fromCity: string;
-  toCity: string;
-  buyPrice: number;
-  sellPrice: number;
-  netProfit: number;
-  profitPercent: number;
-  observedAt: string;
-};
-
-type ApiResponse = {
-  updatedAt: string;
-  count: number;
+type ApiPayload = {
   opportunities: Opportunity[];
+  meta: OpportunitiesMeta;
+  error?: string;
+  details?: string;
 };
 
-const DEFAULT_ITEMS = 'T4_BAG,T4_CAPE,T4_MAIN_SWORD,T4_ARMOR_LEATHER_SET1,T5_2H_FIRESTAFF';
+const DEFAULT_ITEMS = 'T4_BAG,T4_CAPE,T4_MAIN_SWORD';
+
+const normalizeItemsInput = (raw: string): { items: string[]; error?: string } => {
+  const ids = [...new Set(raw.split(',').map((item) => item.trim().toUpperCase()).filter(Boolean))];
+  if (ids.length > MAX_ITEMS_PER_REQUEST) {
+    return { items: [], error: `Too many items. Max ${MAX_ITEMS_PER_REQUEST}.` };
+  }
+  return { items: ids };
+};
 
 export default function DashboardPage(): JSX.Element {
-  const [sourceCity, setSourceCity] = useState('Any');
-  const [targetCity, setTargetCity] = useState('Any');
-  const [itemQuery, setItemQuery] = useState(DEFAULT_ITEMS);
-  const [minProfitPct, setMinProfitPct] = useState('10');
-  const [data, setData] = useState<ApiResponse | null>(null);
+  const [itemInput, setItemInput] = useState(DEFAULT_ITEMS);
+  const [startCity, setStartCity] = useState('Lymhurst');
+  const [targetCities, setTargetCities] = useState<string[]>([...SUPPORTED_CITIES]);
+  const [tier, setTier] = useState('Any');
+  const [mode, setMode] = useState<ModeFilter>('best');
+  const [minProfitPct, setMinProfitPct] = useState('0');
+  const [maxDataAge, setMaxDataAge] = useState('120');
+  const [sortField, setSortField] = useState<SortField>('profitPct');
+
+  const [data, setData] = useState<ApiPayload | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const filtered = useMemo(() => {
+  const filteredRows = useMemo(() => {
     if (!data) return [];
 
-    return data.opportunities.filter((row) => {
-      if (sourceCity !== 'Any' && row.fromCity !== sourceCity) return false;
-      if (targetCity !== 'Any' && row.toCity !== targetCity) return false;
-      return true;
-    });
-  }, [data, sourceCity, targetCity]);
+    let rows = data.opportunities.filter((row) => row.fromCity === startCity && targetCities.includes(row.toCity));
 
-  async function loadArbitrage(): Promise<void> {
+    if (tier !== 'Any') {
+      rows = rows.filter((row) => row.itemId.startsWith(tier));
+    }
+
+    return [...rows].sort((a, b) => {
+      if (sortField === 'dataAgeMinutes') return a.dataAgeMinutes - b.dataAgeMinutes;
+      return b[sortField] - a[sortField];
+    });
+  }, [data, startCity, targetCities, tier, sortField]);
+
+  const loadData = async (): Promise<void> => {
+    const validated = normalizeItemsInput(itemInput);
+    if (validated.error) {
+      setError(validated.error);
+      return;
+    }
+
+    if (!validated.items.length) {
+      setError('Enter at least one item ID.');
+      return;
+    }
+
     setLoading(true);
     setError(null);
 
-    try {
-      const params = new URLSearchParams({
-        items: itemQuery,
-        minProfitPct
-      });
+    const query = new URLSearchParams({
+      items: validated.items.join(','),
+      cities: SUPPORTED_CITIES.join(','),
+      quality: '1',
+      mode,
+      minProfitPct,
+      maxDataAge,
+      ts: String(Date.now())
+    });
 
-      const response = await fetch(`/api/arbitrage?${params.toString()}`);
+    try {
+      const response = await fetch(`/api/opportunities?${query.toString()}`);
+      const payload = (await response.json()) as ApiPayload;
+
       if (!response.ok) {
-        const errBody = await response.json();
-        throw new Error(errBody.message ?? 'Request failed');
+        throw new Error(payload.details ?? payload.error ?? 'Failed request');
       }
 
-      const payload = (await response.json()) as ApiResponse;
       setData(payload);
-    } catch (err) {
-      const message = err instanceof Error ? err.message : 'Unknown client error';
-      setError(message);
+    } catch (fetchError) {
+      setError(fetchError instanceof Error ? fetchError.message : 'Unexpected request error');
     } finally {
       setLoading(false);
     }
-  }
+  };
 
   return (
     <main className={styles.page}>
       <section className={styles.card}>
         <div className={styles.header}>
           <h1>Albion Market Arbitrage Dashboard</h1>
-          <button type="button" onClick={loadArbitrage} disabled={loading}>
+          <button type="button" onClick={loadData} disabled={loading}>
             {loading ? 'Refreshing...' : 'Refresh Data'}
           </button>
         </div>
 
-        <div className={styles.filters}>
-          <input
-            value={itemQuery}
-            onChange={(event) => setItemQuery(event.target.value)}
-            placeholder="Comma-separated item IDs"
-            aria-label="items"
-          />
-          <select value={sourceCity} onChange={(event) => setSourceCity(event.target.value)} aria-label="source-city">
-            <option>Any</option>
-            <option>Bridgewatch</option>
-            <option>Caerleon</option>
-            <option>Fort Sterling</option>
-            <option>Lymhurst</option>
-            <option>Martlock</option>
-            <option>Thetford</option>
-          </select>
-          <select value={targetCity} onChange={(event) => setTargetCity(event.target.value)} aria-label="target-city">
-            <option>Any</option>
-            <option>Bridgewatch</option>
-            <option>Caerleon</option>
-            <option>Fort Sterling</option>
-            <option>Lymhurst</option>
-            <option>Martlock</option>
-            <option>Thetford</option>
-          </select>
-          <input
-            type="number"
-            min="0"
-            max="500"
-            value={minProfitPct}
-            onChange={(event) => setMinProfitPct(event.target.value)}
-            placeholder="Min % profit"
-            aria-label="min-profit-percent"
-          />
-          <button type="button" onClick={loadArbitrage} disabled={loading}>
-            Apply Filters
-          </button>
-        </div>
+        {data && <p>Last Updated: {new Date(data.meta.lastUpdated).toLocaleString()}</p>}
 
-        {error && <p className={styles.error}>{error}</p>}
+        <Filters
+          itemInput={itemInput}
+          startCity={startCity}
+          targetCities={targetCities}
+          tier={tier}
+          mode={mode}
+          minProfitPct={minProfitPct}
+          maxDataAge={maxDataAge}
+          onItemInput={setItemInput}
+          onStartCity={setStartCity}
+          onTargetCities={setTargetCities}
+          onTier={setTier}
+          onMode={setMode}
+          onMinProfitPct={setMinProfitPct}
+          onMaxDataAge={setMaxDataAge}
+          onApply={loadData}
+          loading={loading}
+        />
 
-        <table className={styles.table}>
-          <thead>
-            <tr>
-              <th>Item</th>
-              <th>From City</th>
-              <th>Buy Price</th>
-              <th>To City</th>
-              <th>Sell Price</th>
-              <th>Net Profit</th>
-              <th>Profit %</th>
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.slice(0, 20).map((opportunity) => (
-              <tr key={`${opportunity.itemId}-${opportunity.fromCity}-${opportunity.toCity}`}>
-                <td>{opportunity.itemId}</td>
-                <td>{opportunity.fromCity}</td>
-                <td>{opportunity.buyPrice.toLocaleString()}</td>
-                <td>{opportunity.toCity}</td>
-                <td>{opportunity.sellPrice.toLocaleString()}</td>
-                <td>{opportunity.netProfit.toLocaleString()}</td>
-                <td className={styles.positive}>{opportunity.profitPercent.toFixed(1)}%</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-
-        {!loading && data && <p>Updated: {new Date(data.updatedAt).toLocaleString()} • Rows: {data.count}</p>}
+        {error && <div className={styles.errorBanner}>{error}</div>}
+        {loading && <p>Loading opportunities...</p>}
+        {!loading && !error && data && filteredRows.length === 0 && <p>No opportunities found for current filters.</p>}
+        {!loading && !error && filteredRows.length > 0 && (
+          <OpportunitiesTable rows={filteredRows} sortField={sortField} onSort={setSortField} />
+        )}
       </section>
     </main>
   );
 }
-// END OF FILE
