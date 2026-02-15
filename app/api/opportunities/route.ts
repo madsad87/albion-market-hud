@@ -14,9 +14,11 @@ import {
   SUPPORTED_CITIES
 } from '@/lib/config';
 import { generateOpportunities } from '@/lib/arbitrage';
-import { getKnownItemCount, hasLoadedItemMeta } from '@/lib/itemMeta';
-import { getCuratedScanUniverse } from '@/lib/itemUniverse';
+import { getKnownItemCount, getKnownItemIds, hasLoadedItemMeta } from '@/lib/itemMeta';
 import type { CityName, ModeFilter, OpportunitiesMeta } from '@/types/market';
+
+const scanModes = ['manual', 'auto'] as const;
+type ScanMode = (typeof scanModes)[number];
 
 const modeValues: ModeFilter[] = ['best', 'top3', 'flips', 'transport'];
 
@@ -58,7 +60,10 @@ const querySchema = z.object({
     .string()
     .optional()
     .transform((value) => (modeValues.includes(value as ModeFilter) ? (value as ModeFilter) : DEFAULT_MODE)),
-  scanMode: z.enum(['manual', 'auto']).default('manual')
+  scanMode: z
+    .string()
+    .optional()
+    .transform((value): ScanMode => (scanModes.includes(value as ScanMode) ? (value as ScanMode) : 'manual'))
 });
 
 export async function GET(request: NextRequest): Promise<NextResponse> {
@@ -71,40 +76,26 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
 
   try {
     const parsed = querySchema.parse(Object.fromEntries(queryParams.entries()));
-    const shouldAutoScan = parsed.scanMode === 'auto' && !items.length;
-    const autoScan = shouldAutoScan ? getCuratedScanUniverse() : null;
-    const effectiveItems = shouldAutoScan ? autoScan?.itemIds ?? [] : items;
+    const knownItemIds = getKnownItemIds();
+    const knownItemIdSet = new Set(knownItemIds);
+    const fallbackAutoItems = knownItemIds.slice(0, MAX_ITEMS_PER_REQUEST);
+    const resolvedItems = items.length ? items : parsed.scanMode === 'auto' ? fallbackAutoItems : [];
 
-    if (!effectiveItems.length) {
+    if (!resolvedItems.length) {
       return NextResponse.json({ error: 'Invalid request', details: 'At least one item ID is required' }, { status: 400 });
     }
 
-    if (shouldAutoScan && effectiveItems.length > MAX_AUTO_SCAN_ITEMS) {
-      return NextResponse.json(
-        { error: 'Invalid request', details: `Auto scan limited to ${MAX_AUTO_SCAN_ITEMS} item IDs` },
-        { status: 400 }
-      );
-    }
-
-    const normalized = shouldAutoScan
-      ? await fetchCurrentPricesBatched({
-          items: effectiveItems,
-          cities: parsed.cities,
-          quality: parsed.quality,
-          batchSize: AUTO_SCAN_BATCH_SIZE,
-          timeoutBudgetMs: AUTO_SCAN_TIMEOUT_BUDGET_MS
-        })
-      : await fetchCurrentPrices({
-          items: effectiveItems,
-          cities: parsed.cities,
-          quality: parsed.quality
-        });
+    const normalized = await fetchCurrentPrices({
+      items: resolvedItems,
+      cities: parsed.cities,
+      quality: parsed.quality
+    });
 
     const opportunities = generateOpportunities(normalized, parsed.mode)
       .filter((opportunity) => opportunity.profitPct >= parsed.minProfitPct)
       .filter((opportunity) => opportunity.dataAgeMinutes <= parsed.maxDataAge);
 
-    const knownItems = getKnownItemCount();
+    const knownItemsForRequest = resolvedItems.filter((itemId) => knownItemIdSet.has(itemId)).length;
 
     const meta: OpportunitiesMeta = {
       updatedAt: new Date().toISOString(),
@@ -112,7 +103,9 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         .flatMap((row) => [row.buyPriceMaxDate, row.sellPriceMinDate])
         .sort()
         .at(-1) ?? new Date().toISOString(),
-      itemCount: effectiveItems.length,
+      itemCount: resolvedItems.length,
+      scannedItemCount: resolvedItems.length,
+      scanMode: parsed.scanMode,
       quality: parsed.quality,
       cityCount: parsed.cities.length,
       scanMode: shouldAutoScan ? 'auto' : 'manual',
@@ -122,8 +115,8 @@ export async function GET(request: NextRequest): Promise<NextResponse> {
         source: hasLoadedItemMeta()
           ? 'Local snapshot inspired by ao-data item metadata (extensible to full dump)'
           : 'No item metadata loaded',
-        knownItems,
-        coveragePct: Number(((knownItems / effectiveItems.length) * 100).toFixed(2))
+        knownItems: getKnownItemCount(),
+        coveragePct: Number(((knownItemsForRequest / resolvedItems.length) * 100).toFixed(2))
       }
     };
 
