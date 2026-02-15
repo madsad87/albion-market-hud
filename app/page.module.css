@@ -32,16 +32,16 @@
   margin: 0.8rem 0;
 }
 
-:global(.filtersGrid) {
+.card :global(.filtersGrid) {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 0.75rem;
   margin-bottom: 1rem;
 }
 
-:global(.filtersGrid input),
-:global(.filtersGrid select),
-:global(.filtersGrid button),
+.card :global(.filtersGrid input),
+.card :global(.filtersGrid select),
+.card :global(.filtersGrid button),
 .card button {
   border-radius: 8px;
   border: 1px solid rgba(148, 163, 184, 0.35);
@@ -50,30 +50,30 @@
   padding: 0.55rem 0.65rem;
 }
 
-:global(.tableWrap) {
+.card :global(.tableWrap) {
   max-height: 65vh;
   overflow: auto;
 }
 
-:global(.table) {
+.card :global(.table) {
   width: 100%;
   border-collapse: collapse;
 }
 
-:global(.table th) {
+.card :global(.table th) {
   position: sticky;
   top: 0;
   background: #0f172a;
   cursor: pointer;
 }
 
-:global(.table th),
-:global(.table td) {
+.card :global(.table th),
+.card :global(.table td) {
   text-align: left;
   padding: 0.55rem;
   border-bottom: 1px solid rgba(148, 163, 184, 0.2);
 }
 
-:global(.table tbody tr:hover) {
+.card :global(.table tbody tr:hover) {
   background: rgba(30, 41, 59, 0.55);
 }
