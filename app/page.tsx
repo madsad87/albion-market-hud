@@ -16,7 +16,44 @@ type ApiPayload = {
   details?: string;
 };
 
+type QuickInsight = {
+  label: string;
+  description: string;
+  route: Opportunity;
+};
+
 const DEFAULT_ITEMS = 'T4_BAG,T4_CAPE,T4_MAIN_SWORD';
+
+
+const formatSilver = (value: number): string =>
+  value.toLocaleString(undefined, { maximumFractionDigits: 0 });
+
+const buildQuickInsights = (rows: Opportunity[]): QuickInsight[] => {
+  const freshRows = rows.filter((row) => row.dataAgeMinutes <= 30);
+  const profitable = freshRows.filter((row) => row.netProfit > 0);
+
+  const bestFlip = profitable.filter((row) => row.routeType === 'flip').sort((a, b) => b.netProfit - a.netProfit)[0];
+  const bestTransport = profitable
+    .filter((row) => row.routeType === 'transport')
+    .sort((a, b) => b.netProfit - a.netProfit)[0];
+
+  return [
+    bestFlip
+      ? {
+          label: 'Immediate Flip',
+          description: 'Same-city spread with fresh market data',
+          route: bestFlip
+        }
+      : null,
+    bestTransport
+      ? {
+          label: 'Immediate Transport',
+          description: 'Cross-city spread with strongest current net profit',
+          route: bestTransport
+        }
+      : null
+  ].filter((row): row is QuickInsight => Boolean(row));
+};
 
 const normalizeItemsInput = (raw: string): { items: string[]; error?: string } => {
   const ids = [...new Set(raw.split(',').map((item) => item.trim().toUpperCase()).filter(Boolean))];
@@ -54,6 +91,8 @@ export default function DashboardPage(): JSX.Element {
       return b[sortField] - a[sortField];
     });
   }, [data, startCity, targetCities, tier, sortField]);
+
+  const quickInsights = useMemo(() => buildQuickInsights(filteredRows), [filteredRows]);
 
   const loadData = async (): Promise<void> => {
     const validated = normalizeItemsInput(itemInput);
@@ -107,6 +146,40 @@ export default function DashboardPage(): JSX.Element {
         </div>
 
         {data && <p>Last Updated: {new Date(data.meta.lastUpdated).toLocaleString()}</p>}
+
+        {data && (
+          <div className={styles.insightsPanel}>
+            <h2>Immediate Opportunities</h2>
+            <p className={styles.insightsSubtle}>
+              Shows fresh ({'<='}30m) profitable routes. Item metadata source: {data.meta.itemCatalog.source}.
+            </p>
+            <p className={styles.insightsSubtle}>
+              Metadata coverage estimate for current input: {data.meta.itemCatalog.coveragePct}% ({data.meta.itemCatalog.knownItems}{' '}
+              known item records).
+            </p>
+            {quickInsights.length === 0 ? (
+              <p className={styles.insightsSubtle}>No fresh profitable flips/transports found for active filters.</p>
+            ) : (
+              <div className={styles.insightGrid}>
+                {quickInsights.map((insight) => (
+                  <article key={`${insight.label}-${insight.route.itemId}`} className={styles.insightCard}>
+                    <h3>{insight.label}</h3>
+                    <p className={styles.insightsSubtle}>{insight.description}</p>
+                    <p>
+                      <strong>{insight.route.itemName}</strong> ({insight.route.itemId})
+                    </p>
+                    <p>
+                      {insight.route.fromCity} → {insight.route.toCity} · {insight.route.routeType}
+                    </p>
+                    <p>
+                      Net: {formatSilver(insight.route.netProfit)} silver · Margin: {insight.route.profitPct.toFixed(2)}%
+                    </p>
+                  </article>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         <Filters
           itemInput={itemInput}
